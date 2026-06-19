@@ -6,14 +6,14 @@
   "description": "",
   "scripts": {
     "build": "tsc",
-    "dev": "node  --watch -r ts-node/register src/index.ts",
+    "dev": "node  --watch -r ts-node/register src/parser/parser.ts",
     "format": "prettier --write ."
   },
   "dependencies": {
     "@sapphire/bitfield": "1.2.2"
   },
   "devDependencies": {
-    "@types/node": "22.7.5",
+    "@types/node": "^22.7.5",
     "prettier": "3.3.3",
     "ts-node": "10.9.2",
     "typescript": "5.6.3"

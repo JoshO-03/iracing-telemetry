@@ -30,3 +30,7 @@ logs/
 .env.test.local
 .env.prod
 .env.prod.local
+
+# Generated Telemetry Files
+data/telemetry.csv
+
