@@ -1,4 +1,4 @@
-import { VarHeader } from "./types/var-header";
+import { VarHeader } from "../types/var-header";
 import { getString, getValue } from "./valueReader";
 
 export const getSampleValue = (

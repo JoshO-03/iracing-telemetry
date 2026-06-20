@@ -1,5 +1,5 @@
-import { Header } from "./types/header";
-import { VarHeader } from "./types/var-header";
+import { Header } from "../types/header";
+import { VarHeader } from "../types/var-header";
 import { getString, getValue } from "./valueReader";
 
 const VAR_HEADER_SIZE = 144;

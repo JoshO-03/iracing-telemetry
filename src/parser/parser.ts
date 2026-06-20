@@ -1,5 +1,5 @@
 import { openSync, writeFileSync } from "fs";
-import { DiskSubHeader } from "./types/disk-sub-header";
+import { DiskSubHeader } from "../types/disk-sub-header";
 import { fileToBuffer } from "./fileReader";
 import { getValue } from "./valueReader";
 import { readHeader } from "./headerReader";
@@ -7,11 +7,11 @@ import { readVarHeader } from "./varHeaderReader";
 import { readSamples } from "./sampleReader";
 import { exportToCSV } from "./sampleExporter";
 import { compileSession } from "./sessionCompiler";
+import { detectSpeedChange } from "../analysis/cornerDetector";
 
 const HEADER_LENGTH = 112;
 const DISK_SUB_HEADER_LENGTH = 32;
 const VAR_HEADER_SIZE = 144;
-
   const wantedHeaders = [
     "SessionTime",
     "SessionTick",
@@ -101,7 +101,8 @@ function main() {
     //console.log(lap2);
 
     const session = compileSession(samples);
-    console.log(session["laps"].find((lap) => lap.lapNumber === 4));
+    //console.log(session["laps"].find((lap) => lap.lapNumber === 4));
+    console.log(detectSpeedChange(session["laps"].find((lap) => lap.lapNumber === 4)));
     const csvRows = exportToCSV(wantedHeaders, samples);
 
     writeFileSync("data/telemetry.csv", csvRows.join("\n"));

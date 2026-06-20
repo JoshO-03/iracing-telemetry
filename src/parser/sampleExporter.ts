@@ -1,4 +1,4 @@
-import { TelemetrySample } from "./types/session";
+import { TelemetrySample } from "../types/session";
 
 export const exportToCSV = (
   wantedHeaders: string[],

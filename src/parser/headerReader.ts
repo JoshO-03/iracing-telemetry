@@ -1,4 +1,4 @@
-import { Header } from "./types/header";
+import { Header } from "../types/header";
 import { getValue } from "./valueReader";
 
 export const readHeader = (buffer: Buffer): Header => {

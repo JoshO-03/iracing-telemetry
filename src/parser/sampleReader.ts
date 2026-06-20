@@ -1,8 +1,8 @@
-import { Header } from "./types/header";
+import { Header } from "../types/header";
 import { fileToBuffer } from "./fileReader";
-import { VarHeader } from "./types/var-header";
+import { VarHeader } from "../types/var-header";
 import { getSampleValue } from "./sampleValueReader";
-import { TelemetrySample } from "./types/session";
+import { TelemetrySample } from "../types/session";
 
 
 
