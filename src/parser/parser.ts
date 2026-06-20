@@ -6,6 +6,7 @@ import { readHeader } from "./headerReader";
 import { readVarHeader } from "./varHeaderReader";
 import { readSamples } from "./sampleReader";
 import { exportToCSV } from "./sampleExporter";
+import { compileSession } from "./sessionCompiler";
 
 const HEADER_LENGTH = 112;
 const DISK_SUB_HEADER_LENGTH = 32;
@@ -94,7 +95,13 @@ const parseIBT = (path: string) =>  {
 
 function main() {
     const samples = parseIBT("data/telemetry.ibt");
+    //const laps = segmentLaps(samples);
+    //const lap2 = laps.find((lap) => lap.lapNumber === 2);
 
+    //console.log(lap2);
+
+    const session = compileSession(samples);
+    console.log(session["laps"].find((lap) => lap.lapNumber === 4));
     const csvRows = exportToCSV(wantedHeaders, samples);
 
     writeFileSync("data/telemetry.csv", csvRows.join("\n"));

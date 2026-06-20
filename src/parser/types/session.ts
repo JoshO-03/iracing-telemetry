@@ -15,3 +15,12 @@ export type TelemetrySession = {
 
   samples: TelemetrySample[];
 };
+
+export type Session = {
+  laps : Lap[];
+}
+
+export type Lap = {
+  lapNumber: number;
+  samples: TelemetrySample[];
+}

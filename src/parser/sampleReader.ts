@@ -35,8 +35,6 @@ export const readSamples = (header: Header, telemetryFile: number, usefulVarHead
 
         samples.push(row);
 
-        console.log(row)
-
         sample++;
     } catch (err) {
         endOfSamplesReached = true;
