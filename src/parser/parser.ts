@@ -61,7 +61,7 @@ const readDiskSubHeader = (buffer: Buffer): DiskSubHeader => {
 };
 
 
-const parseIBT = (path: string) =>  {
+const parseIBT =  async (path: string) =>  {
   const telemetryFile = openSync(path, "r");
 
   const headerBuffer = fileToBuffer(telemetryFile, 0, HEADER_LENGTH);
@@ -74,13 +74,15 @@ const parseIBT = (path: string) =>  {
   );
   const diskSubHeader = readDiskSubHeader(diskSubHeaderBuffer);
 
-  // const sessionInfoBuffer = await fileToBuffer(
-  //   telemetryFile,
-  //   header.sessionInfoOffset,
-  //   header.sessionInfoLength
-  // );
+  const sessionInfoBuffer = await fileToBuffer(
+    telemetryFile,
+    header.sessionInfoOffset,
+    header.sessionInfoLength
+  );
 
-  //const sessionInfo = sessionInfoBuffer.toString("ascii");
+  const sessionInfo = sessionInfoBuffer.toString("ascii");
+
+  writeFileSync("data/sessionInfo.txt", sessionInfo);
 
   const varHeaderBuffer = fileToBuffer(
     telemetryFile,
@@ -132,7 +134,7 @@ writeFileSync(
 }
 
 async function main() {
-    const samples = parseIBT("data/telemetry.ibt");
+    const samples = await parseIBT("data/telemetry.ibt");
     //const laps = segmentLaps(samples);
     //const lap2 = laps.find((lap) => lap.lapNumber === 2);
     
@@ -142,9 +144,10 @@ async function main() {
 // )
 //     }
 
+    console.log("sample", samples[0])
+
     console.log(`Read ${samples.length} samples from telemetry.ibt`);
-    console.log(await getTrackModel("okayama"));
-    // const session = compileSession(samples);
+    //const session = compileSession(samples);
     // //console.log(session["laps"].find((lap) => lap.lapNumber === 4));
     // const csvRows = exportToCSV(wantedHeaders, samples);
 

@@ -1,4 +1,4 @@
-import { TrackModel } from "../types/session";
+import { TrackModel } from "../types/track";
 
 import { readFile } from "fs/promises";
 
