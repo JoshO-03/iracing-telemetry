@@ -5,15 +5,6 @@ export type TelemetrySample = {
     [key: string]: TelemetryValue;
 };
 
-export type AnalysableSample = {
-    sampleIndex: number;
-    Lap: number;
-    LapDist: number;
-    Speed: number;
-    SteeringWheelAngle: number;
-};
-
-
 export type TelemetrySession = {
   metadata: {
     trackName?: string;
@@ -26,6 +17,7 @@ export type TelemetrySession = {
 };
 
 export type Session = {
+  trackName: string;
   laps : Lap[];
 }
 
@@ -33,3 +25,22 @@ export type Lap = {
   lapNumber: number;
   samples: TelemetrySample[];
 }
+
+export type TrackModel = {
+  trackName: string;
+  sectors: Sector[];
+  corners: Corner[];
+};
+
+export type Sector = {
+  startDistPct: number;
+  endDistPct: number;
+  sectorId?: number;
+};
+
+export type Corner = {
+  startDistPct: number;
+  endDistPct: number;
+  apexDistPct: number;
+  cornerId?: number;
+};

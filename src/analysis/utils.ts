@@ -1,29 +1,45 @@
-import { AnalysableSample, TelemetrySample } from "../types/session";
+import { TrackModel } from "../types/session";
 
-export const convertToAnalysableSample = (
-    sample: TelemetrySample | undefined
-): AnalysableSample | undefined => {
+import { readFile } from "fs/promises";
 
-    if (!sample) {
-        return undefined;
+export async function loadJsonFile<T>(filePath: string): Promise<T | null> {
+  try {
+    const fileContents = await readFile(filePath, "utf-8");
+    return JSON.parse(fileContents) as T;
+  } catch (err: any) {
+    // File not found OR invalid JSON OR permission issue
+    if (err.code === "ENOENT") {
+      return null; // file doesn't exist
     }
 
-    if (
-        sample["Lap"] === undefined ||
-        sample["LapDist"] === undefined ||
-        sample["Speed"] === undefined ||
-        sample["SteeringWheelAngle"] === undefined
-    ) {
-        return undefined;
+    // If JSON is malformed, this is actually useful to crash early
+    if (err instanceof SyntaxError) {
+      throw new Error(`Invalid JSON in file: ${filePath}`);
     }
 
-    const analysableSample: AnalysableSample = {
-        sampleIndex: Number(sample["sampleIndex"]),
-        Lap: Number(sample["Lap"]),
-        LapDist: Number(sample["LapDist"]),
-        Speed: Number(sample["Speed"]),
-        SteeringWheelAngle: Number(sample["SteeringWheelAngle"])
+    // Unknown error (permissions, disk issues, etc.)
+    throw err;
+  }
+}
+
+export const getTrackModel = async (trackName: string): Promise<TrackModel | null> => {
+    const path = `tracks/models/${trackName}/${trackName}.json`;
+    // Open track model file and return the corresponding model
+    const track = await loadJsonFile<TrackModel>(
+    path
+    );
+
+    if (!track) {
+        console.error(`Track model for ${trackName} not found.`);
+        return null;
+    }
+
+    const trackModel: TrackModel = {
+        trackName: trackName,
+        sectors: track.sectors,
+        corners: track.corners,
     };
+    
+    return trackModel;
 
-    return analysableSample;
-};
+}
