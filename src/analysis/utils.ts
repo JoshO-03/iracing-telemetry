@@ -1,5 +1,5 @@
 import { TrackModel } from "../types/track";
-
+import path from "path";
 import { readFile } from "fs/promises";
 
 export async function loadJsonFile<T>(filePath: string): Promise<T | null> {
@@ -23,10 +23,19 @@ export async function loadJsonFile<T>(filePath: string): Promise<T | null> {
 }
 
 export const getTrackModel = async (trackName: string): Promise<TrackModel | null> => {
-    const path = `tracks/models/${trackName}/${trackName}.json`;
+    const filePath = path.join(
+    process.cwd(),
+        "src",
+        "tracks",
+        "models",
+        `${trackName}.json`
+    );
+
+    console.log(filePath);
+
     // Open track model file and return the corresponding model
     const track = await loadJsonFile<TrackModel>(
-    path
+    filePath
     );
 
     if (!track) {
@@ -39,6 +48,7 @@ export const getTrackModel = async (trackName: string): Promise<TrackModel | nul
         sectors: track.sectors,
         corners: track.corners,
     };
+
     
     return trackModel;
 

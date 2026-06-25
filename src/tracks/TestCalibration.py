@@ -14,8 +14,8 @@ from analysis.cornerDetection import detectCorners
 
 # Default values
 CSV_FILE = "data/telemetry.csv"
-CALIBRATION_FILE = "tracks/okayama_calibration.json"
-IMAGE_FILE = "tracks/references/okayama.png"
+CALIBRATION_FILE = "src/tracks/models/166.json"
+IMAGE_FILE = "src/tracks/models/166.png"
 LAP = 2
 
 # Parse command-line arguments
@@ -133,7 +133,7 @@ def is_corner(distance, corners):
 
     for corner in corners:
 
-        if corner["startdist"] <= distance <= corner["enddist"]:
+        if corner["startDistPct"] <= distance <= corner["endDistPct"]:
             return True
 
     return False

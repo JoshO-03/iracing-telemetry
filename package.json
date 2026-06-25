@@ -10,7 +10,8 @@
     "format": "prettier --write ."
   },
   "dependencies": {
-    "@sapphire/bitfield": "1.2.2"
+    "@sapphire/bitfield": "1.2.2",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",

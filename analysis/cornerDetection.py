@@ -204,6 +204,9 @@ def detectSpeedChange(df, lap_number, threshold = 0.0001):
 
 def detectCorners(df, lap_number, gap_threshold=0.005, min_corner_length=0.002):
     lap = df[df["Lap"] == lap_number].copy()
+    lap_start_lat = float(lap.iloc[0]["Lat"])
+    lap_start_lon = float(lap.iloc[0]["Lon"])
+    print("Lap Start:", lap_start_lat, lap_start_lon)
     lap_end = float(lap.iloc[-1]["LapDistPct"])
 
     rawData = [
@@ -216,8 +219,8 @@ def detectCorners(df, lap_number, gap_threshold=0.005, min_corner_length=0.002):
 
     for item in rawData:
         for event in item["data"]:
-            startDistPct = float(event["startDistPctPct"])
-            endDistPct = float(event["endDistPctPct"]) if event["endDistPctPct"] is not None else lap_end
+            startDistPct = float(event["startDistPct"])
+            endDistPct = float(event["endDistPct"]) if event["endDistPct"] is not None else lap_end
             all_ranges.append({
                 "startDistPct": startDistPct,
                 "endDistPct": endDistPct,
@@ -226,21 +229,21 @@ def detectCorners(df, lap_number, gap_threshold=0.005, min_corner_length=0.002):
     if not all_ranges:
         return []
 
-    all_ranges.sort(key=lambda x: x["startDistPctPct"])
+    all_ranges.sort(key=lambda x: x["startDistPct"])
 
     corners = []
     corner_id = 1
     current = all_ranges[0].copy()
 
     for event in all_ranges[1:]:
-        if event["startDistPctPct"] <= current["endDistPct"] + gap_threshold:
+        if event["startDistPct"] <= current["endDistPct"] + gap_threshold:
             current["endDistPct"] = max(current["endDistPct"], event["endDistPct"])
         else:
-            if current["endDistPct"] - current["startDistPctPct"] >= min_corner_length:
+            if current["endDistPct"] - current["startDistPct"] >= min_corner_length:
                 # Find apex distance (minimum speed point within corner)
                 corner_data = lap[
-                    (lap["LapDistPct"] >= current["startDistPctPct"]) &
-                    (lap["LapDistPct"] <= current["endDistPctPct"])
+                    (lap["LapDistPct"] >= current["startDistPct"]) &
+                    (lap["LapDistPct"] <= current["endDistPct"])
                 ]
                 if not corner_data.empty:
                     min_speed_idx = corner_data["Speed"].idxmin()
@@ -255,10 +258,10 @@ def detectCorners(df, lap_number, gap_threshold=0.005, min_corner_length=0.002):
                 corners.append(current)
             current = event.copy()
 
-    if current["endDistPct"] - current["startDistPctPct"] >= min_corner_length:
+    if current["endDistPct"] - current["startDistPct"] >= min_corner_length:
         # Find apex distance for last corner
         corner_data = lap[
-            (lap["LapDistPct"] >= current["startDistPctPct"]) &
+            (lap["LapDistPct"] >= current["startDistPct"]) &
             (lap["LapDistPct"] <= current["endDistPct"])
         ]
         if not corner_data.empty:
@@ -276,4 +279,4 @@ def detectCorners(df, lap_number, gap_threshold=0.005, min_corner_length=0.002):
 lap3 = df[df["Lap"] == 3].copy()
 corners = detectCorners(df, 3)
 for corner in corners:
-    print(corner["startDistPct"], corner["endDistPctPct"], corner.get("apexDistPct"))
+    print(corner["startDistPct"], corner["endDistPct"], corner.get("apexDistPct"))

@@ -1,14 +1,17 @@
 export type BrakingPerformance = {
+    cornerId: number;
     brakingStartPct : number;
     brakingEndPct : number;
 }
 
 export type AccelPerformance = {
+    cornerId: number;
     accelStartPct: number;
     fullAccelPct: number;
 }
 
 export type SteeringPerformance = {
+    cornerId: number;
     steeringStartPct: number;
     maxAngle: number;
     maxSteeringPct: number;

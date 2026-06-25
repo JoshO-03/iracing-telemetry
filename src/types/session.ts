@@ -5,19 +5,15 @@ export type TelemetrySample = {
     [key: string]: TelemetryValue;
 };
 
-export type TelemetrySession = {
-  metadata: {
-    trackName?: string;
-    trackDisplayName?: string;
-    trackConfigName?: string;
-    trackLength?: string;
-  };
-
-  samples: TelemetrySample[];
-};
+export type SessionInfo = {
+  TrackID: number;
+  TrackName: string;
+  TrackDisplayName: string;
+  TrackLength: string;
+}
 
 export type Session = {
-  trackName: string;
+  info: SessionInfo;
   laps : Lap[];
 }
 
@@ -26,3 +22,11 @@ export type Lap = {
   samples: TelemetrySample[];
 }
 
+export type Corner = {
+  cornerId: number;
+  samples: TelemetrySample[];
+}
+
+export type Driver = {
+
+}

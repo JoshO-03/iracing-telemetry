@@ -1,6 +1,6 @@
 export type TrackModel = {
   trackName: string;
-  sectors: Sector[];
+  sectors?: Sector[];
   corners: Corner[];
 };
 
@@ -14,5 +14,5 @@ export type Corner = {
   startDistPct: number;
   endDistPct: number;
   apexDistPct: number;
-  cornerId?: number;
+  cornerId: number;
 };

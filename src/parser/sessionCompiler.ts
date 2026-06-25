@@ -1,4 +1,4 @@
-import { TelemetrySample, Lap, Session } from "../types/session";
+import { TelemetrySample, Lap, Session, SessionInfo } from "../types/session";
 const segmentLaps = (samples: TelemetrySample[]): Lap[] => {
     const laps : Lap[] = [];
     samples.forEach((sample) => {
@@ -24,9 +24,10 @@ const segmentLaps = (samples: TelemetrySample[]): Lap[] => {
 }
 
 
-export const compileSession = (samples: TelemetrySample[]): Session => {
+export const compileSession = (samples: TelemetrySample[], info: SessionInfo): Session => {
     const laps = segmentLaps(samples);
     const session : Session = {
+        info: info,
         laps: laps
     }
 
