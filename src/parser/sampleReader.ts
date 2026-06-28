@@ -2,7 +2,7 @@ import { Header } from "../types/header";
 import { fileToBuffer } from "./fileReader";
 import { VarHeader } from "../types/var-header";
 import { getSampleValue } from "./sampleValueReader";
-import { TelemetrySample } from "../types/session";
+import { TelemetrySampleRaw } from "../types/session";
 
 
 
@@ -12,7 +12,7 @@ export const readSamples = (header: Header, telemetryFile: number, usefulVarHead
 
     let sample = 0;
     let endOfSamplesReached = false;
-    const samples: TelemetrySample[] = [];
+    const samples: TelemetrySampleRaw[] = [];
 
     while (!endOfSamplesReached) {
     const start = header.bufOffset + sample * header.bufLen;
@@ -24,7 +24,7 @@ export const readSamples = (header: Header, telemetryFile: number, usefulVarHead
         header.bufLen
         );
 
-        const row: TelemetrySample = {
+        const row: TelemetrySampleRaw = {
             sampleIndex: sample,
         };
 

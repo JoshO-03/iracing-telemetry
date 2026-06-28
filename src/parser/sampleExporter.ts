@@ -1,9 +1,9 @@
-import { TelemetrySample } from "../types/session";
+import { TelemetrySampleRaw } from "../types/session";
 import { mkdirSync, writeFileSync } from "fs";
 
 export const exportToCSV = (
   wantedHeaders: string[],
-  samples: TelemetrySample[]
+  samples: TelemetrySampleRaw[]
 ): string[] => {
   const csvHeaders = ["sampleIndex", ...wantedHeaders];
   const csvRows: string[] = [];

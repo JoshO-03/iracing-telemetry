@@ -1,12 +1,12 @@
 {
   "name": "iracing-ibt-parser",
   "version": "0.0.1",
-  "author": "hampel.matthias@gmail.com",
+  "author": "Joshua O'Neill",
   "license": "ISC",
   "description": "",
   "scripts": {
     "build": "tsc",
-    "dev": "node  --watch -r ts-node/register src/parser/parser.ts",
+    "dev": "node  --watch -r ts-node/register src/index.ts",
     "format": "prettier --write ."
   },
   "dependencies": {
