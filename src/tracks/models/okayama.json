@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "track": {
     "name": "okayama",
-    "generatedAt": "2026-06-25T11:07:53.600530+00:00",
+    "generatedAt": "2026-06-25T21:05:17.088535+00:00",
     "origin": {
       "lat": 34.91085965,
       "lon": 134.21920227
@@ -24022,5 +24022,113 @@
         "normalY": -0.092465
       }
     ]
-  }
+  },
+  "corners": [
+    {
+      "cornerId": 1,
+      "startDistPct": 0.1571,
+      "endDistPct": 0.2132,
+      "apexDistPct": 0.1742,
+      "maxCurvature": 1.7768
+    },
+    {
+      "cornerId": 2,
+      "startDistPct": 0.2254,
+      "endDistPct": 0.2622,
+      "apexDistPct": 0.2581,
+      "maxCurvature": 0.9659
+    },
+    {
+      "cornerId": 3,
+      "startDistPct": 0.302,
+      "endDistPct": 0.3724,
+      "apexDistPct": 0.3269,
+      "maxCurvature": 1.0999
+    },
+    {
+      "cornerId": 4,
+      "startDistPct": 0.3977,
+      "endDistPct": 0.4462,
+      "apexDistPct": 0.4032,
+      "maxCurvature": 1.8733
+    },
+    {
+      "cornerId": 5,
+      "startDistPct": 0.4593,
+      "endDistPct": 0.466,
+      "apexDistPct": 0.4622,
+      "maxCurvature": 0.7004
+    },
+    {
+      "cornerId": 6,
+      "startDistPct": 0.6496,
+      "endDistPct": 0.672,
+      "apexDistPct": 0.662,
+      "maxCurvature": 2.8444
+    },
+    {
+      "cornerId": 7,
+      "startDistPct": 0.6963,
+      "endDistPct": 0.7108,
+      "apexDistPct": 0.7034,
+      "maxCurvature": 2.3614
+    },
+    {
+      "cornerId": 8,
+      "startDistPct": 0.7352,
+      "endDistPct": 0.756,
+      "apexDistPct": 0.742,
+      "maxCurvature": 1.568
+    },
+    {
+      "cornerId": 9,
+      "startDistPct": 0.825,
+      "endDistPct": 0.8491,
+      "apexDistPct": 0.8431,
+      "maxCurvature": 2.0938
+    },
+    {
+      "cornerId": 10,
+      "startDistPct": 0.8644,
+      "endDistPct": 0.8902,
+      "apexDistPct": 0.8765,
+      "maxCurvature": 2.5257
+    },
+    {
+      "cornerId": 11,
+      "startDistPct": 0.9308,
+      "endDistPct": 0.9454,
+      "apexDistPct": 0.9419,
+      "maxCurvature": 1.803
+    },
+    {
+      "cornerId": 12,
+      "startDistPct": 0.9756,
+      "endDistPct": 0.001,
+      "apexDistPct": 0.9983,
+      "maxCurvature": 12.4495
+    }
+  ],
+  "sectors": [
+    {
+      "sectorId": 1,
+      "startDistPct": 0.0,
+      "endDistPct": 0.259885
+    },
+    {
+      "sectorId": 2,
+      "startDistPct": 0.259885,
+      "endDistPct": 0.509689
+    },
+    {
+      "sectorId": 3,
+      "startDistPct": 0.509689,
+      "endDistPct": 0.694809
+    },
+    {
+      "sectorId": 4,
+      "startDistPct": 0.694809,
+      "endDistPct": 1.0
+    }
+  ]
 }

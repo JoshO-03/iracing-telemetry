@@ -6,6 +6,11 @@ Plots a track's left/right boundaries and centerline from a
 overlaying a racing line from an iRacing telemetry CSV (parsed from a
 .ibt file) for a specific lap.
 
+If the JSON includes a "corners" list (from exportTrackGeometry.py's
+geometric corner detection), each corner is drawn as a thick coloured arc
+over the centerline with a numbered label, so detection results can be
+checked visually. Pass --no-corners to turn this off.
+
 This script does NOT recompute any track geometry -- it just reads and
 visualises what's already in the JSON. Telemetry GPS (Lat/Lon) is
 converted into the same local XY frame as the track using the origin
@@ -24,6 +29,7 @@ USAGE:
     Optional:
         --label-interval 100   (label every Nth centerline point, default 100)
         --save out.png         (save instead of / as well as showing)
+        --no-corners           (don't highlight detected corners)
 """
 
 import argparse
@@ -31,6 +37,7 @@ import csv
 import json
 
 import matplotlib.pyplot as plt
+from matplotlib import colormaps
 
 from tracks.tools.coordinateSystem import gps_to_xy
 
@@ -48,6 +55,83 @@ def extract_xy(points):
     xs = [p["x"] for p in points]
     ys = [p["y"] for p in points]
     return xs, ys
+
+
+# ======================
+# CORNER HIGHLIGHTING
+# ======================
+#
+# Corners (if present in the JSON) are drawn as thick coloured arcs over the
+# centerline, with a numbered label at the midpoint. This is read-only, same
+# as the rest of this script -- it just visualises corners already detected
+# by exportTrackGeometry.py, it doesn't recompute anything.
+
+def points_in_corner(center_points, track_length, start_pct, end_pct):
+    """
+    Returns the subset of centerline points that fall within a corner's
+    [startDistPct, endDistPct] range, expressed as fractions of track
+    length (0-1). Handles corners that wrap across the start/finish line
+    (startDistPct > endDistPct, e.g. 0.97 -> 0.02).
+    """
+    if start_pct <= end_pct:
+        return [
+            p for p in center_points
+            if start_pct <= (p["distance"] / track_length) <= end_pct
+        ]
+
+    return [
+        p for p in center_points
+        if (p["distance"] / track_length) >= start_pct
+        or (p["distance"] / track_length) <= end_pct
+    ]
+
+
+def plot_corners(ax, geometry):
+    """
+    Draws each corner in geometry["corners"] as a thick coloured arc over
+    the centerline, labelled with its cornerId at the midpoint. Returns the
+    number of corners drawn (0 if none present/empty), so callers can decide
+    whether to mention corners in the title/summary.
+    """
+    corners = geometry.get("corners") or []
+    if not corners:
+        return 0
+
+    center_points = geometry["centerline"]["points"]
+    track_length = geometry["track"]["trackLength"]
+
+    cmap = colormaps.get_cmap("tab20")
+
+    for i, corner in enumerate(corners):
+        pts = points_in_corner(
+            center_points,
+            track_length,
+            corner["startDistPct"],
+            corner["endDistPct"],
+        )
+
+        if not pts:
+            continue
+
+        xs = [p["x"] for p in pts]
+        ys = [p["y"] for p in pts]
+        color = cmap(i % cmap.N)
+
+        ax.plot(xs, ys, linewidth=5, color=color, zorder=4, solid_capstyle="round")
+
+        mid = pts[len(pts) // 2]
+        ax.annotate(
+            str(corner["cornerId"]),
+            (mid["x"], mid["y"]),
+            fontsize=9,
+            fontweight="bold",
+            ha="center",
+            va="center",
+            zorder=5,
+            bbox=dict(boxstyle="circle,pad=0.25", facecolor="white", edgecolor="black", linewidth=1),
+        )
+
+    return len(corners)
 
 
 # ======================
@@ -110,7 +194,7 @@ def convert_telemetry_to_xy(telemetry_rows, origin_lat, origin_lon):
 # ======================
 
 def plot_track(geometry, label_interval=100, save_path=None,
-                racing_line_xy=None, lap_label=None):
+                racing_line_xy=None, lap_label=None, show_corners=True):
 
     track_info = geometry["track"]
     left_points = geometry["left"]["points"]
@@ -121,40 +205,50 @@ def plot_track(geometry, label_interval=100, save_path=None,
     right_x, right_y = extract_xy(right_points)
     center_x, center_y = extract_xy(center_points)
 
-    plt.figure(figsize=(12, 12))
+    fig, ax = plt.subplots(figsize=(12, 12))
 
-    plt.plot(left_x, left_y, label="Left", color="tab:blue")
-    plt.plot(right_x, right_y, label="Right", color="tab:orange")
-    plt.plot(center_x, center_y, label="Centerline", color="tab:green")
+    ax.plot(left_x, left_y, label="Left", color="tab:blue", linewidth=1, alpha=0.6)
+    ax.plot(right_x, right_y, label="Right", color="tab:orange", linewidth=1, alpha=0.6)
+    ax.plot(center_x, center_y, label="Centerline", color="gray", linewidth=1.5, zorder=2)
+
+    num_corners_drawn = 0
+    if show_corners:
+        num_corners_drawn = plot_corners(ax, geometry)
+        if num_corners_drawn:
+            # One proxy legend entry for "corners" rather than one per corner --
+            # the numbered labels on the plot itself identify individual corners.
+            ax.plot([], [], linewidth=5, color="tab:red", label=f"Corners ({num_corners_drawn})")
 
     if racing_line_xy:
         rx = [p[0] for p in racing_line_xy]
         ry = [p[1] for p in racing_line_xy]
         line_label = f"Racing line ({lap_label})" if lap_label else "Racing line"
-        plt.plot(rx, ry, label=line_label, color="tab:red", linewidth=1.5, zorder=5)
+        ax.plot(rx, ry, label=line_label, color="black", linewidth=1.2, zorder=6, linestyle="--")
 
     if label_interval and label_interval > 0:
         for i in range(0, len(center_points), label_interval):
-            plt.text(
+            ax.text(
                 center_points[i]["x"],
                 center_points[i]["y"],
                 f"{i}",
                 fontsize=8
             )
 
-    plt.axis("equal")
-    plt.grid(True)
+    ax.axis("equal")
+    ax.grid(True, alpha=0.3)
 
     name = track_info.get("name", "Track")
     length = track_info.get("trackLength")
     title = f"{name} — Track Geometry"
     if length:
         title += f" ({length:.0f} m)"
-    plt.title(title)
+    if num_corners_drawn:
+        title += f" — {num_corners_drawn} corners"
+    ax.set_title(title)
 
-    plt.xlabel("X metres")
-    plt.ylabel("Y metres")
-    plt.legend()
+    ax.set_xlabel("X metres")
+    ax.set_ylabel("Y metres")
+    ax.legend()
 
     if save_path:
         plt.savefig(save_path, dpi=150)
@@ -175,6 +269,12 @@ def print_summary(geometry):
     widths = [p["width"] for p in centerline]
     print(f"Width range: {min(widths):.2f} m – {max(widths):.2f} m")
 
+    corners = geometry.get("corners") or []
+    print(f"Corners: {len(corners)}")
+
+    sectors = geometry.get("sectors") or []
+    print(f"Sectors: {len(sectors)}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Plot track geometry, optionally with a telemetry racing line overlay")
@@ -183,6 +283,7 @@ def main():
     parser.add_argument("--save", default=None, help="Path to save the plot to (e.g. out.png). If omitted, shows interactively.")
     parser.add_argument("--telemetry", default=None, help="Path to a telemetry CSV (parsed from an .ibt file) to overlay as a racing line")
     parser.add_argument("--lap", type=int, default=None, help="Lap number to plot from the telemetry CSV (matches the 'Lap' column). Required if --telemetry is given.")
+    parser.add_argument("--no-corners", action="store_true", help="Don't highlight detected corners, even if present in the JSON")
 
     args = parser.parse_args()
 
@@ -213,7 +314,8 @@ def main():
         label_interval=args.label_interval,
         save_path=args.save,
         racing_line_xy=racing_line_xy,
-        lap_label=lap_label
+        lap_label=lap_label,
+        show_corners=not args.no_corners,
     )
 
 

@@ -5,12 +5,6 @@ import { getValue } from "./valueReader";
 import { readHeader } from "./headerReader";
 import { readVarHeader } from "./varHeaderReader";
 import { readSamples } from "./sampleReader";
-import { exportToCSV } from "./sampleExporter";
-import { compileSession } from "./sessionCompiler";
-import { getTrackModel } from "../analysis/utils";
-import yaml from "yaml";
-import { Session, SessionInfo } from "../types/session";
-import { getCornerAnalysis } from "../analysis/SessionParser";
 
 const HEADER_LENGTH = 112;
 const DISK_SUB_HEADER_LENGTH = 32;
@@ -123,31 +117,10 @@ const parseIBT = (path: string) =>  {
 
 }
 
-const getSessionFromIBT = (path: string) : Session => {
-  const data = parseIBT(path);
 
-  const info = yaml.parse(data.sessionInfo);
-
-  const trackInfo = Object.fromEntries(
-      wantedSessionInfo.map(field => [
-          field,
-          info.WeekendInfo[field]
-      ])
-  ) as SessionInfo;
-
-  const session = compileSession(data.samples, trackInfo);
-
-  console.log(session.info.TrackID);
-  return session;
-}
 
 async function main() {
     const samples = parseIBT("data/telemetry.ibt");
-    const session = getSessionFromIBT("data/telemetry.ibt");
-
-    getCornerAnalysis(session.laps[2], await getTrackModel(String(session.info.TrackID)));
-
-
 
     console.log(`Read ${samples.samples.length} samples from telemetry.ibt`);
 

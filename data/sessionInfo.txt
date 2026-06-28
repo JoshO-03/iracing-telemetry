@@ -979,7 +979,7 @@ DriverInfo:
    SuitDesignStr: 34,b8f500,5603ad,5603ad
    BodyType: 0
    FaceType: 4
-   HelmetType: 0
+   HelmetType: 04
    CarNumberDesignStr: 0,0,5603ad,b8f500,5603ad
    CarSponsor_1: 0
    CarSponsor_2: 0

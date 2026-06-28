@@ -190,6 +190,300 @@ def convert_points(points, origin_lat, origin_lon):
 
 
 # ======================
+# CORNER DETECTION (geometric, from centerline curvature)
+# ======================
+#
+# A corner is a property of the track, not of how someone drove it -- so it
+# is detected here, once, from the centerline shape itself. This is
+# deliberately independent of any telemetry/lap data: no braking, throttle,
+# or steering input is used. That's what lets this catch flat-out corners
+# (track curves, but the driver barely changes their inputs) as well as
+# hairpins, with no special-casing, and it means a track model can be built
+# from KML files alone -- no .ibt or telemetry CSV required.
+#
+# Method: at each resampled centerline point, compute the local heading
+# (the same tangent direction used to build the normals/centerline) and look
+# at how much that heading changes per metre travelled -- i.e. curvature.
+# Straights have near-zero curvature. Corners show a sustained, elevated
+# curvature region. We threshold, then merge nearby/overlapping regions into
+# discrete corners, the same gap-merging idea as the old telemetry-based
+# detector, just applied to geometry instead of driver input.
+
+CURVATURE_THRESHOLD_DEG_PER_M = 0.3   # heading change (degrees) per metre; tune per track
+CORNER_GAP_THRESHOLD_M = 15           # merge corner regions separated by less than this
+MIN_CORNER_LENGTH_M = 8                # discard corner regions shorter than this
+
+
+def compute_heading_deg(points):
+    """
+    Local heading (degrees) at each point, from the tangent direction
+    p[i+1] - p[i-1] (same construction as the normals in build_centerline).
+    Track is closed, so indices wrap.
+    """
+    pts = np.array(points)
+    n = len(pts)
+    headings = np.zeros(n)
+
+    for i in range(n):
+        p_prev = pts[(i - 1) % n]
+        p_next = pts[(i + 1) % n]
+        dx, dy = p_next - p_prev
+        headings[i] = np.degrees(np.arctan2(dy, dx))
+
+    return headings
+
+
+def compute_curvature(points, cumdist):
+    """
+    Curvature in degrees of heading-change per metre, at each centerline
+    point. Handles the +/-180 degree wraparound when computing the heading
+    difference between consecutive points.
+
+    Note: cumdist[-1] is the distance to the LAST point, not the full closed
+    loop -- it does not include the closing segment back to point 0 (the
+    resampling in resample_boundary doesn't guarantee point[-1] lands exactly
+    on point[0], so that final gap, however small, must be measured and
+    added explicitly here. Skipping it causes a near-zero ddist at the
+    wraparound and a curvature spike.)
+    """
+    headings = compute_heading_deg(points)
+    n = len(headings)
+    closing_dist = point_distance(points[-1], points[0])
+    curvature = np.zeros(n)
+
+    for i in range(n):
+        i_next = (i + 1) % n
+        dheading = headings[i_next] - headings[i]
+        # Wrap to [-180, 180] so e.g. 179 -> -179 reads as a small turn, not a u-turn
+        dheading = (dheading + 180) % 360 - 180
+
+        if i_next == 0:
+            ddist = closing_dist
+        else:
+            ddist = cumdist[i_next] - cumdist[i]
+        ddist = max(ddist, 1e-6)
+
+        curvature[i] = abs(dheading) / ddist
+
+    return curvature
+
+
+def smooth_curvature(curvature, window=5):
+    """Light moving-average smoothing so single noisy points don't fragment a corner."""
+    kernel = np.ones(window) / window
+    padded = np.pad(curvature, (window // 2, window // 2), mode="wrap")
+    return np.convolve(padded, kernel, mode="valid")[: len(curvature)]
+
+
+def detect_corners_from_curvature(
+    centerline_xy,
+    centerline_cumdist,
+    threshold=CURVATURE_THRESHOLD_DEG_PER_M,
+    gap_threshold_m=CORNER_GAP_THRESHOLD_M,
+    min_length_m=MIN_CORNER_LENGTH_M,
+):
+    """
+    Returns a list of corners, each as:
+        {
+            "cornerId": int,
+            "startDistPct": float,   # 0-1, fraction of track length
+            "endDistPct": float,
+            "apexDistPct": float,    # point of maximum curvature within the corner
+            "maxCurvature": float,   # degrees/metre, useful later for corner-type classification
+        }
+
+    Purely geometric -- no telemetry involved. Designed to be run once per
+    track (via main()) and visually checked with plotTrackGeometry.py before
+    trusting the output, same workflow as the telemetry-based detector it
+    replaces.
+    """
+    track_length = float(centerline_cumdist[-1])
+    n = len(centerline_xy)
+
+    curvature = compute_curvature(centerline_xy, centerline_cumdist)
+    curvature = smooth_curvature(curvature)
+
+    above = curvature >= threshold
+
+    # Find contiguous (wrap-aware) runs of "above threshold" points.
+    # Walk twice around the lap so a region spanning the start/finish line
+    # isn't artificially cut in half.
+    raw_regions = []
+    in_region = False
+    region_start = None
+
+    for i in range(2 * n):
+        idx = i % n
+        if above[idx] and not in_region:
+            region_start = i
+            in_region = True
+        elif not above[idx] and in_region:
+            raw_regions.append((region_start, i - 1))
+            in_region = False
+        if i >= n and not in_region:
+            break
+
+    if in_region:
+        raw_regions.append((region_start, region_start + n - 1))
+
+    # Deduplicate regions that are just the start/finish wraparound counted twice
+    seen = set()
+    deduped = []
+    for start, end in raw_regions:
+        key = (start % n, end % n)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append((start, end))
+
+    if not deduped:
+        return []
+
+    def region_dist(start, end):
+        s, e = start % n, end % n
+        if e >= s:
+            return centerline_cumdist[e] - centerline_cumdist[s]
+        return (track_length - centerline_cumdist[s]) + centerline_cumdist[e]
+
+    deduped.sort(key=lambda r: r[0])
+
+    # Merge regions that are close together (e.g. a corner with a brief
+    # straightening mid-apex that dips just under threshold)
+    merged = [deduped[0]]
+    for start, end in deduped[1:]:
+        last_start, last_end = merged[-1]
+        gap = region_dist(last_end, start)
+        if gap <= gap_threshold_m:
+            merged[-1] = (last_start, end)
+        else:
+            merged.append((start, end))
+
+    corners = []
+    corner_id = 1
+    for start, end in merged:
+        length = region_dist(start, end)
+        if length < min_length_m:
+            continue
+
+        # Walk the region (wrap-aware) to find the apex: point of max curvature
+        indices = [j % n for j in range(start, end + 1)]
+        local_curvatures = [curvature[j] for j in indices]
+        apex_local_idx = int(np.argmax(local_curvatures))
+        apex_idx = indices[apex_local_idx]
+
+        start_idx, end_idx = start % n, end % n
+
+        corners.append({
+            "cornerId": corner_id,
+            "startDistPct": round(centerline_cumdist[start_idx] / track_length, 4),
+            "endDistPct": round(centerline_cumdist[end_idx] / track_length, 4),
+            "apexDistPct": round(centerline_cumdist[apex_idx] / track_length, 4),
+            "maxCurvature": round(float(curvature[apex_idx]), 4),
+        })
+        corner_id += 1
+
+    return corners
+
+
+# ======================
+# SECTORS (manual entry only)
+# ======================
+#
+# Unlike corners, sectors are not a geometric property of the track -- they
+# are an arbitrary choice of where splits fall. Deliberately manual-only:
+# track model creation should never depend on having a telemetry/.ibt file
+# available.
+#
+# Shape matches how iRacing itself reports sectors (SplitTimeInfo.Sectors /
+# SectorStartPct in the .ibt session info) even though we never read that
+# file here: each sector is just a START percentage around the lap, not a
+# start+end pair. Sector 1 always starts at 0.0 (the start/finish line).
+# A sector's end is simply the next sector's start, and the last sector
+# wraps back around to 1.0. We still store startDistPct/endDistPct on each
+# sector in the output JSON (rather than only the start points) since that's
+# the more directly usable shape for bucketing telemetry later -- but we
+# only ever ask the user for start percentages, matching what they'd
+# actually know or transcribe from iRacing.
+
+def sectors_from_starts(start_pcts):
+    """
+    start_pcts: sorted list of sector start percentages (0-1), NOT including
+    the implicit 0.0 for sector 1 -- e.g. [0.259885, 0.509689, 0.694809] for
+    a track with 4 sectors total.
+
+    Returns sectors as {sectorId, startDistPct, endDistPct}, where each
+    sector's endDistPct is simply the next sector's startDistPct, and the
+    last sector's endDistPct wraps to 1.0.
+    """
+    all_starts = [0.0] + sorted(start_pcts)
+    sectors = []
+
+    for i, start_pct in enumerate(all_starts):
+        end_pct = all_starts[i + 1] if i + 1 < len(all_starts) else 1.0
+        sectors.append({
+            "sectorId": i + 1,
+            "startDistPct": round(start_pct, 6),
+            "endDistPct": round(end_pct, 6),
+        })
+
+    return sectors
+
+
+def collect_sector_data(track_length_m):
+    """
+    Interactive prompt for sector start percentages around the lap (0-1),
+    matching the shape iRacing itself uses for sectors. Sector 1's start
+    (0.0, the start/finish line) is implicit and not asked for. Returns
+    sectors as {sectorId, startDistPct, endDistPct}, or None if
+    skipped/invalid. Entirely independent of any telemetry data.
+    """
+    print("\n" + "=" * 50)
+    print("SECTOR CONFIGURATION (manual entry)")
+    print("=" * 50)
+    print(f"Track length: {track_length_m:.1f} m")
+    print(
+        "Enter each additional sector's START as a fraction of the lap "
+        "(0-1), e.g. 0.26 for a sector that starts 26% of the way around. "
+        "Sector 1 always starts at 0.0 and is added automatically."
+    )
+
+    try:
+        answer = input("\nAdd sectors now? (y/N): ").strip().lower()
+        if answer != "y":
+            return None
+
+        num_extra_sectors = int(input("How many sectors in total (including sector 1)? "))
+        if num_extra_sectors <= 1:
+            print("Need at least 2 sectors to be meaningful. Skipping sector data.")
+            return None
+
+        start_pcts = []
+        previous_start = 0.0
+
+        for i in range(2, num_extra_sectors + 1):
+            sector_start = float(input(f"Enter sector {i} start (fraction of lap, 0-1): "))
+
+            if sector_start <= previous_start or sector_start >= 1.0:
+                print(f"Invalid start percentage. Must be > {previous_start} and < 1.0")
+                return None
+
+            start_pcts.append(sector_start)
+            previous_start = sector_start
+
+        sectors = sectors_from_starts(start_pcts)
+
+        print("\nSector data collected:")
+        for sector in sectors:
+            print(f"  Sector {sector['sectorId']}: starts at {sector['startDistPct']:.4f} (ends at {sector['endDistPct']:.4f})")
+
+        return sectors
+
+    except ValueError:
+        print("Invalid input. Skipping sector data.")
+        return None
+
+
+# ======================
 # MAIN BUILD
 # ======================
 
@@ -279,6 +573,8 @@ def build_track_geometry(left_kml_path, right_kml_path, track_name):
         ]
     }
 
+    corners = detect_corners_from_curvature(centerline_xy, centerline_cumdist)
+
     geometry = {
         "schemaVersion": 1,
         "track": {
@@ -295,21 +591,43 @@ def build_track_geometry(left_kml_path, right_kml_path, track_name):
         "left": boundary_block(left_resampled, left_gps_resampled, left_cumdist),
         "right": boundary_block(right_resampled, right_gps_resampled, right_cumdist),
         "centerline": centerline_block,
+        "corners": corners,
     }
 
     return geometry
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Export track boundary/centerline geometry to JSON")
+    parser = argparse.ArgumentParser(description="Export track boundary/centerline/corner geometry to JSON")
     parser.add_argument("--left", required=True, help="Path to left boundary KML file")
     parser.add_argument("--right", required=True, help="Path to right boundary KML file")
     parser.add_argument("--name", required=True, help="Track name (used as output filename and in JSON)")
     parser.add_argument("--out", default=".", help="Output directory (default: current directory)")
+    parser.add_argument("--skip-sectors", action="store_true", help="Skip the interactive sector prompt entirely")
 
     args = parser.parse_args()
 
     geometry = build_track_geometry(args.left, args.right, args.name)
+
+    print(f"\nDetected {len(geometry['corners'])} corner(s) from centerline curvature:")
+    for corner in geometry["corners"]:
+        print(
+            f"  Corner {corner['cornerId']}: "
+            f"{corner['startDistPct']:.4f} - {corner['endDistPct']:.4f} "
+            f"(apex {corner['apexDistPct']:.4f}, curvature {corner['maxCurvature']:.3f} deg/m)"
+        )
+    print(
+        "  (Cross-check this count against the track's official turn count "
+        "from WeekendInfo.TrackNumTurns in a session's sessionInfo, if you have one handy. "
+        "If it's off, adjust CURVATURE_THRESHOLD_DEG_PER_M / CORNER_GAP_THRESHOLD_M at the top "
+        "of this file and re-run -- don't trust the count blindly.)"
+    )
+
+    sectors = None
+    if not args.skip_sectors:
+        sectors = collect_sector_data(geometry["track"]["trackLength"])
+    if sectors:
+        geometry["sectors"] = sectors
 
     out_path = f"{args.out.rstrip('/')}/{args.name}.json"
     with open(out_path, "w") as f:
@@ -318,6 +636,8 @@ def main():
     print(f"\nWrote {out_path}")
     print(f"Track length: {geometry['track']['trackLength']:.1f} m")
     print(f"Points per boundary: {geometry['track']['pointCount']}")
+    print(f"Corners: {len(geometry['corners'])}")
+    print(f"Sectors: {len(geometry.get('sectors', []))}")
 
 
 if __name__ == "__main__":
