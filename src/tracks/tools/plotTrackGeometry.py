@@ -57,6 +57,49 @@ def extract_xy(points):
     return xs, ys
 
 
+def get_track_geometry(geometry):
+    return geometry.get("geometry", geometry)
+
+
+def get_boundary_points(geometry, boundary_name):
+    track_geometry = get_track_geometry(geometry)
+    if boundary_name == "left":
+        return track_geometry.get("leftBoundary", geometry.get("left"))["points"]
+    if boundary_name == "right":
+        return track_geometry.get("rightBoundary", geometry.get("right"))["points"]
+    return track_geometry["centerline"]["points"]
+
+
+def get_point_distance_meters(point):
+    return point.get("distanceMeters", point.get("distance"))
+
+
+def get_track_length_meters(geometry):
+    track_info = geometry["track"]
+    return track_info.get("trackLengthMeters", track_info.get("trackLength"))
+
+
+def get_point_count(geometry):
+    generation = geometry.get("generation") or {}
+    track_info = geometry["track"]
+    return generation.get("pointCount", track_info.get("pointCount"))
+
+
+def get_generated_at(geometry):
+    generation = geometry.get("generation") or {}
+    track_info = geometry["track"]
+    return generation.get("generatedAt", track_info.get("generatedAt"))
+
+
+def get_origin(geometry):
+    coordinate_system = geometry.get("coordinateSystem")
+    if coordinate_system:
+        return coordinate_system["originLat"], coordinate_system["originLon"]
+
+    origin = geometry["track"]["origin"]
+    return origin["lat"], origin["lon"]
+
+
 # ======================
 # CORNER HIGHLIGHTING
 # ======================
@@ -76,13 +119,13 @@ def points_in_corner(center_points, track_length, start_pct, end_pct):
     if start_pct <= end_pct:
         return [
             p for p in center_points
-            if start_pct <= (p["distance"] / track_length) <= end_pct
+            if start_pct <= (get_point_distance_meters(p) / track_length) <= end_pct
         ]
 
     return [
         p for p in center_points
-        if (p["distance"] / track_length) >= start_pct
-        or (p["distance"] / track_length) <= end_pct
+        if (get_point_distance_meters(p) / track_length) >= start_pct
+        or (get_point_distance_meters(p) / track_length) <= end_pct
     ]
 
 
@@ -97,8 +140,8 @@ def plot_corners(ax, geometry):
     if not corners:
         return 0
 
-    center_points = geometry["centerline"]["points"]
-    track_length = geometry["track"]["trackLength"]
+    center_points = get_boundary_points(geometry, "centerline")
+    track_length = get_track_length_meters(geometry)
 
     cmap = colormaps.get_cmap("tab20")
 
@@ -197,9 +240,9 @@ def plot_track(geometry, label_interval=100, save_path=None,
                 racing_line_xy=None, lap_label=None, show_corners=True):
 
     track_info = geometry["track"]
-    left_points = geometry["left"]["points"]
-    right_points = geometry["right"]["points"]
-    center_points = geometry["centerline"]["points"]
+    left_points = get_boundary_points(geometry, "left")
+    right_points = get_boundary_points(geometry, "right")
+    center_points = get_boundary_points(geometry, "centerline")
 
     left_x, left_y = extract_xy(left_points)
     right_x, right_y = extract_xy(right_points)
@@ -238,7 +281,7 @@ def plot_track(geometry, label_interval=100, save_path=None,
     ax.grid(True, alpha=0.3)
 
     name = track_info.get("name", "Track")
-    length = track_info.get("trackLength")
+    length = get_track_length_meters(geometry)
     title = f"{name} — Track Geometry"
     if length:
         title += f" ({length:.0f} m)"
@@ -259,14 +302,14 @@ def plot_track(geometry, label_interval=100, save_path=None,
 
 def print_summary(geometry):
     track_info = geometry["track"]
-    centerline = geometry["centerline"]["points"]
+    centerline = get_boundary_points(geometry, "centerline")
 
     print(f"Track: {track_info.get('name')}")
-    print(f"Generated at: {track_info.get('generatedAt')}")
-    print(f"Track length: {track_info.get('trackLength'):.2f} m")
-    print(f"Point count: {track_info.get('pointCount')}")
+    print(f"Generated at: {get_generated_at(geometry)}")
+    print(f"Track length: {get_track_length_meters(geometry):.2f} m")
+    print(f"Point count: {get_point_count(geometry)}")
 
-    widths = [p["width"] for p in centerline]
+    widths = [p.get("widthMeters", p.get("width")) for p in centerline]
     print(f"Width range: {min(widths):.2f} m – {max(widths):.2f} m")
 
     corners = geometry.get("corners") or []
@@ -297,13 +340,13 @@ def main():
     lap_label = None
 
     if args.telemetry:
-        origin = geometry["track"]["origin"]
+        origin_lat, origin_lon = get_origin(geometry)
 
         telemetry_rows = load_telemetry_lap(args.telemetry, args.lap)
         racing_line_xy = convert_telemetry_to_xy(
             telemetry_rows,
-            origin["lat"],
-            origin["lon"]
+            origin_lat,
+            origin_lon
         )
 
         print(f"\nLoaded {len(racing_line_xy)} telemetry points for lap {args.lap}")

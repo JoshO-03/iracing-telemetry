@@ -5,6 +5,7 @@ import { getValue } from "./valueReader";
 import { readHeader } from "./headerReader";
 import { readVarHeader } from "./varHeaderReader";
 import { readSamples } from "./sampleReader";
+import { exportToCSV } from "./sampleExporter";
 
 const HEADER_LENGTH = 112;
 const DISK_SUB_HEADER_LENGTH = 32;
@@ -121,6 +122,7 @@ const parseIBT = (path: string) =>  {
 
 async function main() {
     const samples = parseIBT("data/telemetry.ibt");
+    exportToCSV(wantedHeaders, samples.samples);
 
     console.log(`Read ${samples.samples.length} samples from telemetry.ibt`);
 

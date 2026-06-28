@@ -1,4 +1,5 @@
 import { TelemetrySample } from "../types/session";
+import { mkdirSync, writeFileSync } from "fs";
 
 export const exportToCSV = (
   wantedHeaders: string[],
@@ -16,6 +17,9 @@ export const exportToCSV = (
 
     csvRows.push(csvLine);
   }
+
+  mkdirSync("data", { recursive: true });
+  writeFileSync("data/telemetry.csv", csvRows.join("\n"));
 
   return csvRows;
 };

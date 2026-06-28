@@ -9,10 +9,13 @@ USAGE:
     PYTHONPATH=src python3 src/tracks/tools/exportTrackGeometry.py \
         --left path/to/left.kml \
         --right path/to/right.kml \
-        --name okayama \
+        --name "Okayama International Circuit" \
+        --config-name "Full Course" \
+        --slug okayama-full-course \
+        --track-id 166 \
         --out src/tracks/models
 
-This produces: src/tracks/models/okayama.json
+This produces: src/tracks/models/okayama-full-course.json
 """
 
 import argparse
@@ -91,6 +94,10 @@ def cumulative_distance(points):
     for i in range(1, len(points)):
         distances.append(distances[-1] + point_distance(points[i], points[i - 1]))
     return np.array(distances)
+
+
+def closed_loop_length(points, cumulative_distances):
+    return float(cumulative_distances[-1] + point_distance(points[-1], points[0]))
 
 
 def resample_boundary(points, num_points):
@@ -289,7 +296,7 @@ def detect_corners_from_curvature(
             "startDistPct": float,   # 0-1, fraction of track length
             "endDistPct": float,
             "apexDistPct": float,    # point of maximum curvature within the corner
-            "maxCurvature": float,   # degrees/metre, useful later for corner-type classification
+            "maxCurvatureDegPerMeter": float,   # useful later for corner-type classification
         }
 
     Purely geometric -- no telemetry involved. Designed to be run once per
@@ -297,7 +304,7 @@ def detect_corners_from_curvature(
     trusting the output, same workflow as the telemetry-based detector it
     replaces.
     """
-    track_length = float(centerline_cumdist[-1])
+    track_length = closed_loop_length(centerline_xy, centerline_cumdist)
     n = len(centerline_xy)
 
     curvature = compute_curvature(centerline_xy, centerline_cumdist)
@@ -378,7 +385,7 @@ def detect_corners_from_curvature(
             "startDistPct": round(centerline_cumdist[start_idx] / track_length, 4),
             "endDistPct": round(centerline_cumdist[end_idx] / track_length, 4),
             "apexDistPct": round(centerline_cumdist[apex_idx] / track_length, 4),
-            "maxCurvature": round(float(curvature[apex_idx]), 4),
+            "maxCurvatureDegPerMeter": round(float(curvature[apex_idx]), 4),
         })
         corner_id += 1
 
@@ -394,16 +401,10 @@ def detect_corners_from_curvature(
 # track model creation should never depend on having a telemetry/.ibt file
 # available.
 #
-# Shape matches how iRacing itself reports sectors (SplitTimeInfo.Sectors /
-# SectorStartPct in the .ibt session info) even though we never read that
-# file here: each sector is just a START percentage around the lap, not a
-# start+end pair. Sector 1 always starts at 0.0 (the start/finish line).
-# A sector's end is simply the next sector's start, and the last sector
-# wraps back around to 1.0. We still store startDistPct/endDistPct on each
-# sector in the output JSON (rather than only the start points) since that's
-# the more directly usable shape for bucketing telemetry later -- but we
-# only ever ask the user for start percentages, matching what they'd
-# actually know or transcribe from iRacing.
+# Shape matches the TrackModel schema: each sector is just a START
+# percentage around the lap, not a start+end pair. Sector 1 always starts at
+# 0.0 (the start/finish line). Sector ends are derived in runtime code from
+# the next sector's start, with the final sector ending at 1.0.
 
 def sectors_from_starts(start_pcts):
     """
@@ -411,19 +412,16 @@ def sectors_from_starts(start_pcts):
     the implicit 0.0 for sector 1 -- e.g. [0.259885, 0.509689, 0.694809] for
     a track with 4 sectors total.
 
-    Returns sectors as {sectorId, startDistPct, endDistPct}, where each
-    sector's endDistPct is simply the next sector's startDistPct, and the
-    last sector's endDistPct wraps to 1.0.
+    Returns sectors as {sectorId, startDistPct}. End percentages are
+    deliberately not stored in TrackModel.
     """
     all_starts = [0.0] + sorted(start_pcts)
     sectors = []
 
     for i, start_pct in enumerate(all_starts):
-        end_pct = all_starts[i + 1] if i + 1 < len(all_starts) else 1.0
         sectors.append({
             "sectorId": i + 1,
             "startDistPct": round(start_pct, 6),
-            "endDistPct": round(end_pct, 6),
         })
 
     return sectors
@@ -434,8 +432,8 @@ def collect_sector_data(track_length_m):
     Interactive prompt for sector start percentages around the lap (0-1),
     matching the shape iRacing itself uses for sectors. Sector 1's start
     (0.0, the start/finish line) is implicit and not asked for. Returns
-    sectors as {sectorId, startDistPct, endDistPct}, or None if
-    skipped/invalid. Entirely independent of any telemetry data.
+    sectors as {sectorId, startDistPct}, or None if skipped/invalid.
+    Entirely independent of any telemetry data.
     """
     print("\n" + "=" * 50)
     print("SECTOR CONFIGURATION (manual entry)")
@@ -474,7 +472,7 @@ def collect_sector_data(track_length_m):
 
         print("\nSector data collected:")
         for sector in sectors:
-            print(f"  Sector {sector['sectorId']}: starts at {sector['startDistPct']:.4f} (ends at {sector['endDistPct']:.4f})")
+            print(f"  Sector {sector['sectorId']}: starts at {sector['startDistPct']:.4f}")
 
         return sectors
 
@@ -487,7 +485,16 @@ def collect_sector_data(track_length_m):
 # MAIN BUILD
 # ======================
 
-def build_track_geometry(left_kml_path, right_kml_path, track_name):
+def build_track_geometry(
+    left_kml_path,
+    right_kml_path,
+    track_name,
+    track_id,
+    config_name,
+    slug,
+    country=None,
+    notes=None,
+):
 
     left_gps = load_kml_coordinates(left_kml_path)
     right_gps = load_kml_coordinates(right_kml_path)
@@ -509,7 +516,7 @@ def build_track_geometry(left_kml_path, right_kml_path, track_name):
     # Cumulative distance ALONG THE CENTERLINE ITSELF (this is the
     # distance-along-track metric, not the left boundary's own arc length).
     centerline_cumdist = cumulative_distance(centerline_xy)
-    track_length = float(centerline_cumdist[-1])
+    track_length = closed_loop_length(centerline_xy, centerline_cumdist)
 
     # Track width at each centerline point, measured as the distance from
     # the centerline point to its corresponding left-boundary point, x2
@@ -550,7 +557,7 @@ def build_track_geometry(left_kml_path, right_kml_path, track_name):
                     "y": round(float(y), 4),
                     "lat": round(float(lat), 8),
                     "lon": round(float(lon), 8),
-                    "distance": round(float(d), 3),
+                    "distanceMeters": round(float(d), 3),
                 }
                 for (x, y), (lat, lon), d in zip(xy_points, gps_points, cumdist)
             ]
@@ -563,8 +570,8 @@ def build_track_geometry(left_kml_path, right_kml_path, track_name):
                 "y": round(float(y), 4),
                 "lat": round(float(lat), 8),
                 "lon": round(float(lon), 8),
-                "distance": round(float(d), 3),
-                "width": round(float(w), 4),
+                "distanceMeters": round(float(d), 3),
+                "widthMeters": round(float(w), 4),
                 "normalX": round(nx, 6),
                 "normalY": round(ny, 6),
             }
@@ -578,21 +585,38 @@ def build_track_geometry(left_kml_path, right_kml_path, track_name):
     geometry = {
         "schemaVersion": 1,
         "track": {
+            "trackId": int(track_id),
             "name": track_name,
-            "generatedAt": datetime.now(timezone.utc).isoformat(),
-            "origin": {
-                "lat": round(float(origin_lat), 8),
-                "lon": round(float(origin_lon), 8),
-            },
-            "pointCount": RESAMPLE_POINTS,
-            "trackLength": round(track_length, 3),
+            "configName": config_name,
+            "slug": slug,
+            "trackLengthMeters": round(track_length, 3),
             "closed": True,
         },
-        "left": boundary_block(left_resampled, left_gps_resampled, left_cumdist),
-        "right": boundary_block(right_resampled, right_gps_resampled, right_cumdist),
-        "centerline": centerline_block,
+        "generation": {
+            "generatedAt": datetime.now(timezone.utc).isoformat(),
+            "source": "exportTrackGeometry.py",
+            "pointCount": RESAMPLE_POINTS,
+        },
+        "coordinateSystem": {
+            "type": "local_xy_meters",
+            "originLat": round(float(origin_lat), 8),
+            "originLon": round(float(origin_lon), 8),
+            "xUnit": "meters",
+            "yUnit": "meters",
+        },
+        "geometry": {
+            "leftBoundary": boundary_block(left_resampled, left_gps_resampled, left_cumdist),
+            "rightBoundary": boundary_block(right_resampled, right_gps_resampled, right_cumdist),
+            "centerline": centerline_block,
+        },
+        "sectors": sectors_from_starts([]),
         "corners": corners,
     }
+
+    if country:
+        geometry["track"]["country"] = country
+    if notes:
+        geometry["generation"]["notes"] = notes
 
     return geometry
 
@@ -601,20 +625,34 @@ def main():
     parser = argparse.ArgumentParser(description="Export track boundary/centerline/corner geometry to JSON")
     parser.add_argument("--left", required=True, help="Path to left boundary KML file")
     parser.add_argument("--right", required=True, help="Path to right boundary KML file")
-    parser.add_argument("--name", required=True, help="Track name (used as output filename and in JSON)")
+    parser.add_argument("--name", required=True, help="Human-readable track name")
+    parser.add_argument("--config-name", required=True, help="Human-readable track configuration/layout name")
+    parser.add_argument("--slug", required=True, help="Stable app/file-friendly track slug, used as the output filename")
+    parser.add_argument("--track-id", required=True, type=int, help="iRacing TrackID for this track/configuration")
+    parser.add_argument("--country", default=None, help="Optional track country")
+    parser.add_argument("--notes", default=None, help="Optional generation notes")
     parser.add_argument("--out", default=".", help="Output directory (default: current directory)")
     parser.add_argument("--skip-sectors", action="store_true", help="Skip the interactive sector prompt entirely")
 
     args = parser.parse_args()
 
-    geometry = build_track_geometry(args.left, args.right, args.name)
+    geometry = build_track_geometry(
+        args.left,
+        args.right,
+        args.name,
+        args.track_id,
+        args.config_name,
+        args.slug,
+        country=args.country,
+        notes=args.notes,
+    )
 
     print(f"\nDetected {len(geometry['corners'])} corner(s) from centerline curvature:")
     for corner in geometry["corners"]:
         print(
             f"  Corner {corner['cornerId']}: "
             f"{corner['startDistPct']:.4f} - {corner['endDistPct']:.4f} "
-            f"(apex {corner['apexDistPct']:.4f}, curvature {corner['maxCurvature']:.3f} deg/m)"
+            f"(apex {corner['apexDistPct']:.4f}, curvature {corner['maxCurvatureDegPerMeter']:.3f} deg/m)"
         )
     print(
         "  (Cross-check this count against the track's official turn count "
@@ -625,17 +663,17 @@ def main():
 
     sectors = None
     if not args.skip_sectors:
-        sectors = collect_sector_data(geometry["track"]["trackLength"])
+        sectors = collect_sector_data(geometry["track"]["trackLengthMeters"])
     if sectors:
         geometry["sectors"] = sectors
 
-    out_path = f"{args.out.rstrip('/')}/{args.name}.json"
+    out_path = f"{args.out.rstrip('/')}/{args.slug}.json"
     with open(out_path, "w") as f:
         json.dump(geometry, f, indent=2)
 
     print(f"\nWrote {out_path}")
-    print(f"Track length: {geometry['track']['trackLength']:.1f} m")
-    print(f"Points per boundary: {geometry['track']['pointCount']}")
+    print(f"Track length: {geometry['track']['trackLengthMeters']:.1f} m")
+    print(f"Points per boundary: {geometry['generation']['pointCount']}")
     print(f"Corners: {len(geometry['corners'])}")
     print(f"Sectors: {len(geometry.get('sectors', []))}")
 
